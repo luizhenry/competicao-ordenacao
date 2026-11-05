@@ -1,27 +1,23 @@
-/**
- * Competição de Ordenação: O Desafio dos Milissegundos
- * Estratégia: Algoritmo Linear Híbrido O(N) (Counting Sort + Radix Sort Base 256)
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
 
-// Limite de memória para usar Counting Sort Direto (~128 MB de limite para o range)
+// Limite maximo de intervalo para aplicacao do Counting Sort direto
 #define MAX_COUNTING_RANGE 33554432
 
 /**
- * Radix Sort LSB (Base 256 - 8 bits por passada)
- * Complexidade: O(N) estrito. Usado caso o intervalo de números seja muito esparso.
+ * Radix Sort LSB em Base 256 (processamento de 8 bits por passada).
+ * Executa em tempo linear O(N) e eh utilizado quando o intervalo de valores
+ * ultrapassa o limite do Counting Sort direto.
  */
 static void radixSort256(int * restrict v, size_t n, int * restrict aux) {
     uint32_t *src = (uint32_t *)v;
     uint32_t *dst = (uint32_t *)aux;
     size_t count[4][256] = {0};
 
-    // Passada única para construir os 4 histogramas simultaneamente
+    // Construcao simultanea dos 4 histogramas em uma unica passada
     for (size_t i = 0; i < n; i++) {
         uint32_t val = src[i];
         count[0][ val        & 0xFF]++;
@@ -30,12 +26,11 @@ static void radixSort256(int * restrict v, size_t n, int * restrict aux) {
         count[3][(val >> 24) & 0xFF]++;
     }
 
-    // 4 passadas de distribuição por bytes (1 byte = 256 posições no cache L1)
+    // 4 passadas de distribuicao (uma para cada byte)
     for (int pass = 0; pass < 4; pass++) {
         size_t *c = count[pass];
-        
-        // OTIMIZAÇÃO EXTREMA: Se todos os números tiverem o mesmo byte (ex: 0 nos bits altos),
-        // pula a passada inteira sem tocar na memória!
+
+        // Se todos os elementos compartilham o mesmo byte, pula a passada
         if (c[0] == n) continue;
 
         size_t acumulador = 0;
@@ -51,26 +46,26 @@ static void radixSort256(int * restrict v, size_t n, int * restrict aux) {
             dst[c[(val >> shift) & 0xFF]++] = val;
         }
 
-        // Troca os ponteiros de origem e destino
+        // Alterna entre os vetores de origem e destino
         uint32_t *tmp = src;
         src = dst;
         dst = tmp;
     }
 
-    // Se o resultado final parou no vetor auxiliar, copia de volta
+    // Se o resultado final ficou no vetor auxiliar, copia de volta para o vetor original
     if (src != (uint32_t *)v) {
         memcpy(v, src, n * sizeof(int));
     }
 }
 
 /**
- * Função Principal de Ordenação O(N)
- * Analisa a distribuição dos dados e aplica Counting Sort direto ou Radix Sort.
+ * Funcao principal de ordenacao hibrida.
+ * Identifica o intervalo dos dados e seleciona a estrategia mais eficiente:
+ * Counting Sort direto para intervalos densos ou Radix Sort Base 256.
  */
 void ordenarVetor(int * restrict v, size_t n, int * restrict buffer_aux, uint32_t * restrict freq) {
     if (n < 2) return;
 
-    // 1. Encontra o menor e o maior elemento (Vetorizado automaticamente com -O3)
     int min_val = v[0];
     int max_val = v[0];
     for (size_t i = 1; i < n; i++) {
@@ -80,17 +75,14 @@ void ordenarVetor(int * restrict v, size_t n, int * restrict buffer_aux, uint32_
 
     int64_t range = (int64_t)max_val - (int64_t)min_val + 1;
 
-    // 2. Se o intervalo cabe no buffer de frequência pré-alocado, usa Counting Sort O(N)
+    // Se os valores sao nao-negativos e cabem no range pre-alocado, aplica Counting Sort direto
     if (min_val >= 0 && range <= MAX_COUNTING_RANGE) {
-        // Zera apenas a fatia necessária do vetor de frequência
         memset(freq, 0, (size_t)range * sizeof(uint32_t));
 
-        // Conta as ocorrências de cada número
         for (size_t i = 0; i < n; i++) {
             freq[v[i] - min_val]++;
         }
 
-        // Reconstrói o vetor ordenado de forma linear contígua
         size_t idx = 0;
         for (int64_t val = 0; val < range; val++) {
             uint32_t qtd = freq[val];
@@ -100,13 +92,12 @@ void ordenarVetor(int * restrict v, size_t n, int * restrict buffer_aux, uint32_
             }
         }
     } else {
-        // 3. Caso contrário, usa Radix Sort em Base 256
         radixSort256(v, n, buffer_aux);
     }
 }
 
 /**
- * Verifica se o vetor está em ordem crescente estrita (Critério: 40 pts)
+ * Verifica se o vetor esta ordenado em ordem crescente
  */
 int verificarCorretude(const int *v, size_t n) {
     for (size_t i = 1; i < n; i++) {
@@ -118,12 +109,10 @@ int verificarCorretude(const int *v, size_t n) {
 int main(int argc, char *argv[]) {
     const char *arquivo_entrada = (argc > 1) ? argv[1] : "ListahAhSerOrdenada.txt";
 
-    // =========================================================================
-    // ETAPA 1: Leitura ultrarrápida do disco (Ignorada pelo cronômetro)
-    // =========================================================================
+    // Leitura completa do arquivo para a memoria
     FILE *fp = fopen(arquivo_entrada, "rb");
     if (!fp) {
-        perror("Erro ao abrir o arquivo ListahAhSerOrdenada.txt");
+        perror("Erro ao abrir o arquivo de entrada");
         return EXIT_FAILURE;
     }
 
@@ -133,7 +122,7 @@ int main(int argc, char *argv[]) {
 
     char *texto_bruto = (char *)malloc(tamanho_arquivo + 1);
     if (!texto_bruto) {
-        fprintf(stderr, "Falha ao alocar memoria para leitura.\n");
+        fprintf(stderr, "Erro de alocacao de memoria para leitura.\n");
         fclose(fp);
         return EXIT_FAILURE;
     }
@@ -142,12 +131,12 @@ int main(int argc, char *argv[]) {
     texto_bruto[bytes_lidos] = '\0';
     fclose(fp);
 
-    // Aloca o vetor principal de elementos
-    size_t capacidade = 10000000; // Começa preparado para 10 milhões de inteiros
+    // Alocacao inicial do vetor dinamico
+    size_t capacidade = 10000000;
     int *vetor = (int *)malloc(capacidade * sizeof(int));
     size_t total_elementos = 0;
 
-    // Parser manual de inteiros (até 10x mais rápido que fscanf)
+    // Conversao rapida do buffer de texto para inteiros
     char *p = texto_bruto;
     while (*p) {
         while (*p && (*p < '0' || *p > '9') && *p != '-') p++;
@@ -171,47 +160,37 @@ int main(int argc, char *argv[]) {
         }
         vetor[total_elementos++] = valor * sinal;
     }
-    free(texto_bruto); // Libera o texto bruto da RAM
+    free(texto_bruto);
 
-    // Aloca os buffers auxiliares ANTES do clock() para não poluir a medição
+    // Buffers auxiliares alocados previamente para nao interferir no cronometro
     int *buffer_aux = (int *)malloc(total_elementos * sizeof(int));
     uint32_t *freq  = (uint32_t *)malloc(MAX_COUNTING_RANGE * sizeof(uint32_t));
 
-    printf("==================================================\n");
-    printf("   DESAFIO DOS MILISSEGUNDOS - BENCHMARK EM C     \n");
-    printf("==================================================\n");
-    printf("-> Arquivo carregado: %s\n", arquivo_entrada);
-    printf("-> Total de elementos na RAM: %zu\n", total_elementos);
+    printf("Arquivo carregado: %s\n", arquivo_entrada);
+    printf("Total de elementos: %zu\n", total_elementos);
 
-    // =========================================================================
-    // ETAPA 2: Medição Isolada da Ordenação (Critério: 15 pts)
-    // =========================================================================
+    // Medicao isolada do tempo de ordenacao
     clock_t inicio = clock();
 
     ordenarVetor(vetor, total_elementos, buffer_aux, freq);
 
     clock_t fim = clock();
-    // =========================================================================
 
     double tempo_gasto = ((double)(fim - inicio)) / CLOCKS_PER_SEC;
-    printf("-> Tempo de ordenacao: %f segundos (%f ms)\n", tempo_gasto, tempo_gasto * 1000.0);
+    printf("Tempo de ordenação: %f segundos (%f ms)\n", tempo_gasto, tempo_gasto * 1000.0);
 
-    // =========================================================================
-    // ETAPA 3: Validação de Corretude (Critério: 40 pts)
-    // =========================================================================
+    // Validacao da ordenacao
     if (verificarCorretude(vetor, total_elementos)) {
-        printf("-> Status: SUCESSO! Vetor verificado em ordem crescente estrita.\n");
-        printf("-> Menor elemento: %d | Maior elemento: %d\n", vetor[0], vetor[total_elementos - 1]);
+        printf("Status: Sucesso! Vetor ordenado corretamente.\n");
+        printf("Primeiro elemento: %d | Ultimo elemento: %d\n", vetor[0], vetor[total_elementos - 1]);
     } else {
-        printf("-> Status: ERRO! Falha na verificacao de ordenacao.\n");
+        printf("Status: Erro na ordenacao do vetor.\n");
     }
-    printf("==================================================\n");
 
-    // Liberação correta de memória (Critério: 30 pts)
+    // Liberacao de memoria
     free(freq);
     free(buffer_aux);
     free(vetor);
 
     return EXIT_SUCCESS;
 }
-
